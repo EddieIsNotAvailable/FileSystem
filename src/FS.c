@@ -31,8 +31,11 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <stdint.h>
+#include "../include/headers.h"
 
-//TODO: Date/time file last updated (saved/inserted), print date info in list()
+//TODO: 
+// - Date/time file last updated (saved/inserted), print date info in list()
+// - In insert, add check for READONLY when filename already exists
 
 // Shell related
 #define WHITESPACE " \t\n"
@@ -47,7 +50,7 @@
 #define FIRST_DATA_BLOCK 1364
 #define MAX_FILE_SIZE 1048576
 
-// File attributes (Values represent bit number)
+// File attributes
 #define HIDDEN_ATTR 0
 #define READONLY_ATTR 1
 
@@ -58,7 +61,7 @@ uint8_t data[NUM_BLOCKS][BLOCK_SIZE];
 struct directoryEntry {
   char filename[64];
   short in_use;
-  int inode;
+  int32_t inode;
 };
 
 struct inode {
@@ -75,11 +78,27 @@ FILE    *fp;
 char    image_name[64];
 uint8_t image_open;
 
-void readData(char *file, int32_t startByte, int32_t numBytes);
-void set_attribute(uint32_t file_number, char* attr);
-void list(char *param1, char *param2);
-
 //----------FS functions----------
+//For debugging
+void printInodeInfo(uint32_t inode_num) //RM
+{
+  struct inode thisInode = inodes[inode_num];
+  if(!thisInode.in_use)
+  {
+    printf("This inode not in use\n");
+    return;
+  }
+
+  printf("Inode %d blocks:\n",inode_num);
+  uint32_t i;
+  for(i=0; thisInode.blocks[i] != -1; i++)
+  {
+    printf("%d ",thisInode.blocks[i]);
+  }
+  printf("\n");
+  return;
+}
+
 
 //Returns file index in directory, or -1 if not found
 int32_t fileExists(char* filename)
@@ -253,7 +272,7 @@ void insert(char *filename)
 
   //verify file exists
   struct stat buf;
-  int ret = stat(filename, &buf);
+  int32_t ret = stat(filename, &buf);
 
   if( ret == -1 )
   {
@@ -276,8 +295,8 @@ void insert(char *filename)
   }
 
   //find empty directory entry
-  int i;
-  int directory_entry = -1;
+  int32_t i;
+  int32_t directory_entry = -1;
   for( i = 0; i < NUM_FILES; i++ )
   {
     if( directory[i].in_use == 0 )
@@ -296,7 +315,7 @@ void insert(char *filename)
   //-------Code from block_copy----------
   // Open the input file read-only 
   FILE *ifp = fopen ( filename, "r" ); 
-  printf("Reading %d bytes from %s\n", (int) buf.st_size, filename );
+  printf("Reading %d bytes from %s\n", (int32_t) buf.st_size, filename );
 
   // Save off the size of the input file since we'll use it in a couple of places and 
   // also initialize our index variables to zero. 
@@ -346,6 +365,7 @@ void insert(char *filename)
 
     //find a free block
     block_index = findFreeBlock();
+    //printf("\nUsing found block %d\n",block_index); //RM
 
     if(block_index == -1)
     {
@@ -402,7 +422,7 @@ int main()
   while (1)
   {
     // Print out the prompt
-    printf("fs> ");
+    printf("FS> ");
 
     // Wait for command to read
     while (!fgets(command_string, MAX_COMMAND_SIZE, stdin));
@@ -444,7 +464,7 @@ int main()
         printf("Error: No filename specified\n");
         continue;
       }
-      createfs( token[1] );
+      createfs(token[1]);
     }
     else if(strcmp("savefs", token[0]) == 0)
     {
@@ -457,31 +477,26 @@ int main()
         printf("Error: No filename specified\n");
         continue;
       }
-      openfs( token[1] );
+      openfs(token[1]);
     }
     else if(strcmp("close", token[0]) == 0)
     {
       closefs();
     }
-    else if(strcmp("list", token[0] ) == 0)
+    else if(strcmp("list", token[0]) == 0)
     {
       if( !image_open)
       {
         printf("Error: No disk image open\n");
         continue;
       }
-      char *param1 = "\0", *param2 = "\0";
-      if(token[1] != NULL)
-      {
-        param1 = token[1];
-        printf("param1 set to: %s\n",token[1]);
-      }
-      if(token[2] != NULL)
-      {
-        param2 = token[2];
-        printf("param2 set to: %s\n",token[2]);
-      }
+      char *param1, *param2;
+      if(token[1] == NULL) param1 = "\0";
+      else param1 = token[1];
 
+      if(token[2] == NULL) param2 = "\0";
+      else param2 = token[2];
+      
       list(param1,param2);
     }
     else if(strcmp("df", token[0]) == 0)
@@ -509,6 +524,8 @@ int main()
     }
     else if(strcmp("read", token[0]) == 0)
     {
+      uint32_t start, num;
+
       if(token[1] == NULL)
       {
         printf("Error: No filename specified\n");
@@ -519,17 +536,30 @@ int main()
         printf("Error: No image open\n");
         continue;
       }
-      if(token[2] == NULL)
-      {
-        printf("Error: No starting byte provided\n");
-        continue;
-      }
+
+      //If starting byte not provided, default to zero
+      if(token[2] == NULL) start = 0;
+      else start = atoi(token[2]);
+
+      //If num bytes to read not provided, default to file size
       if(token[3] == NULL)
       {
-        printf("Error: No provided quantity of bytes to read\n");
+        int32_t ret = fileExists(token[1]);
+        if(ret == -1)
+        {
+          printf("Error: File %s doesn't exist\n",token[1]);
+          continue;
+        }
+        num = inodes[directory[ret].inode].file_size;
+      }
+      else num = atoi(token[3]);
+
+      if(start < 0 || num < 0)
+      {
+        printf("Error: Invalid read range\n");
         continue;
       }
-      readData(token[1],atoi(token[2]),atoi(token[3]));
+      readData(token[1],start, num);
     }
     else if( strcmp("attrib", token[0]) == 0)
     {
@@ -565,6 +595,20 @@ int main()
         }
       }
     }
+    else if( strcmp("retrieve", token[0]) == 0)
+    {
+      if(token[1] == NULL)
+      {
+        printf("Error: No file specified to retrieve\n");
+        continue;
+      }
+      if((fileExists(token[1])) == -1)
+      {
+        printf("Error: File %s doesn't exist\n", token[1]);
+        continue;
+      }
+      retrieve(token[1], token[2]);
+    }
 
     // Cleanup allocated memory
     for(uint32_t i = 0; i < MAX_NUM_ARGUMENTS; i++)
@@ -580,11 +624,12 @@ int main()
 
 //----------Command functions----------
 
-void readData(char *file, int32_t startByte, int32_t numBytes)
+void readData(char *file, uint32_t startByte, uint32_t numBytes)
 {
   uint32_t i,j, foundDir=-1, fileSize;
   struct inode thisInode;
-  for(i = 0; i < NUM_FILES; i++) {
+  for(i = 0; i < NUM_FILES; i++)
+  {
     if(directory[i].in_use && strcmp(directory[i].filename, file) == 0)
     {
       foundDir = i;
@@ -609,12 +654,18 @@ void readData(char *file, int32_t startByte, int32_t numBytes)
   if((startByte + numBytes) > fileSize)
   {
     numBytes = fileSize - startByte;
-    printf("Requested read too many bytes, reading %d instead\n", numBytes);
+    printf("Requested read of too many bytes, reading %d instead\n", numBytes);
   }
 
   int32_t startingBlock = startByte / BLOCK_SIZE;
+  
   //Real starting byte relative to the first block
   startByte = startByte % BLOCK_SIZE;
+
+  int numBlocksTest = fileSize / BLOCK_SIZE;
+  if(fileSize % BLOCK_SIZE) numBlocksTest++;
+  printf("Reading file of size %d, with %d blocks\n",fileSize, numBlocksTest);
+
 
   //Bytes left to read from first block
   uint32_t remainder = BLOCK_SIZE - startByte;
@@ -632,17 +683,15 @@ void readData(char *file, int32_t startByte, int32_t numBytes)
     printf("%0x ",thing);
   }
   printf("\n");
-
   numBytes -= remainder;
 
   uint32_t numBlocksToRead = numBytes / BLOCK_SIZE;
   int32_t currBlock;
 
 //---Read middle block(s)---
-  for(i=startingBlock+1; i<numBlocksToRead; i++)
+  for(i=startingBlock+1; i<=numBlocksToRead; i++)
   {
     currBlock = thisInode.blocks[i];
-    
     for(j=0; j<BLOCK_SIZE; j++)
     {
       thing = data[currBlock + FIRST_DATA_BLOCK][j];
@@ -678,7 +727,6 @@ void set_attribute(uint32_t file_number, char* attr)
   //Utilize bitmask, with OR to set bit, or AND on NOT of the byte to unset the bit.
   if(attr[1] == 'h')
   {
-    
     if(setBit) thisInode.attribute |= (1 << HIDDEN_ATTR);
     else thisInode.attribute &= ~(1 << HIDDEN_ATTR);
   }
@@ -727,4 +775,46 @@ void list(char *param1,char *param2)
   }
 
   if(not_found) printf("Error: No files found\n");
+}
+
+void retrieve(char *fileToRetrieve, char *newFilename)
+{
+  int32_t file_num = fileExists(fileToRetrieve);
+
+  if(file_num == -1)
+  {
+    printf("Error: Filename %s not found\n",fileToRetrieve);
+    return;
+  }
+
+  if(newFilename == NULL)
+    newFilename = fileToRetrieve;
+  
+
+  fp = fopen(newFilename,"w");
+
+  struct directoryEntry thisFile = directory[file_num];
+  struct inode thisInode = inodes[thisFile.inode];
+
+  uint32_t fileSize, block_count, i, j;
+  
+  fileSize = thisInode.file_size;
+  block_count = fileSize / BLOCK_SIZE;
+
+  //Filesize will be zero, within one block, or over multiple blocks
+  if(block_count < 1)
+  {
+    fwrite( &data[ FIRST_DATA_BLOCK + thisInode.blocks[0] ][0], 1, fileSize, fp);
+  }
+  else
+  {
+    for(i=0; i<block_count; i++)
+      fwrite( &data[ FIRST_DATA_BLOCK + thisInode.blocks[i] ][0], BLOCK_SIZE, 1, fp);
+    
+    //In case last block is not full
+    uint32_t remainder = fileSize % BLOCK_SIZE;
+    if(remainder) fwrite( &data[ FIRST_DATA_BLOCK + thisInode.blocks[block_count] ][0], 1, remainder, fp);
+  }
+
+  fclose(fp);
 }
