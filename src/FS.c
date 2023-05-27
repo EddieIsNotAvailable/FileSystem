@@ -108,6 +108,16 @@ int32_t fileExists(char* filename)
   return -1;
 }
 
+int32_t findDeletedFile(char* filename)
+{
+  int32_t i;
+  for(i = 0; i<NUM_FILES; i++)
+    if(!(directory[i].in_use) && strcmp(directory[i].filename, filename) == 0)
+      return i;
+    
+  return -1;
+}
+
 int32_t findFreeBlock()
 {
   int32_t i;
@@ -182,7 +192,8 @@ int main()
 
     if(strcmp("createfs", token[0]) == 0)
     {
-      if (token[1] == NULL) {
+      if (token[1] == NULL)
+      {
         printf("Error: No filename specified\n");
         continue;
       }
@@ -194,7 +205,7 @@ int main()
     }
     else if( strcmp("open", token[0]) == 0)
     {
-      if( token[1] == NULL )
+      if(token[1] == NULL)
       {
         printf("Error: No filename specified\n");
         continue;
@@ -219,7 +230,7 @@ int main()
       if(token[2] == NULL) param2 = "\0";
       else param2 = token[2];
       
-      list(param1,param2);
+      list(param1, param2);
     }
     else if(strcmp("df", token[0]) == 0)
     {
@@ -235,11 +246,6 @@ int main()
       if(token[1] == NULL)
       {
         printf("Error: No filename specified\n");
-        continue;
-      }
-      if(!image_open)
-      {
-        printf("Error: No image open\n");
         continue;
       }
       insert(token[1]);
@@ -289,7 +295,7 @@ int main()
       uint32_t i, j;
       for(i = 1; i < MAX_NUM_ARGUMENTS; i++)
       {
-        if(token[i]==NULL)
+        if(token[i] == NULL)
         {
           printf("Error: Incorrect parameters. Ex: attrib [+attribute] <filename>\n");
           break;
@@ -323,11 +329,6 @@ int main()
         printf("Error: No file specified to retrieve\n");
         continue;
       }
-      if((fileExists(token[1])) == -1)
-      {
-        printf("Error: File %s doesn't exist\n", token[1]);
-        continue;
-      }
       retrieve(token[1], token[2]);
     }
     else if(strcmp("encrypt", token[0]) == 0 || strcmp("decrypt", token[0]) == 0)
@@ -335,11 +336,6 @@ int main()
       if(token[1] == NULL)
       {
         printf("Error: No file specified to encrypt\n");
-        continue;
-      }
-      if((fileExists(token[1])) == -1)
-      {
-        printf("Error: File %s doesn't exist\n", token[1]);
         continue;
       }
       if(token[2] == NULL)
@@ -356,11 +352,16 @@ int main()
         printf("Error: No file specified to delete\n");
         continue;
       }
-      
+      deleteFile(token[1]);
     }
     else if(strcmp("undelete", token[0]) == 0)
     {
-
+      if(token[1] == NULL)
+      {
+        printf("Error: No file specified to undelete\n");
+        continue;
+      }
+      undeleteFile(token[1]);
     }
     else printf("Error: Unsupported command %s\n",token[0]);
     
@@ -416,7 +417,7 @@ void deleteFile(char *filename)
 //If a file's inode, or any of it's blocks are not free undelete fails.
 void undeleteFile(char *filename)
 {
-  int32_t ret = fileExists(filename);
+  int32_t ret = findDeletedFile(filename);
   if(ret == -1)
   {
     printf("Error: File %s doesn't exist\n", filename);
@@ -808,10 +809,9 @@ void closefs()
 //Insert file into the open FS image
 void insert(char *filename)
 {
-  //verify filename isnt null
-  if(filename == NULL)
+  if(!image_open)
   {
-    printf("Error: Filename is NULL");
+    printf("Error: No image open\n");
     return;
   }
 

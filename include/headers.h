@@ -6,6 +6,8 @@ void encryptFile(char *filename, uint8_t cipher);
 void createfs(char *filename);
 void insert(char *filename);
 void openfs(char *filename);
+void undeleteFile(char *filename);
+void deleteFile(char *filename);
 void closefs();
 void savefs();
 uint32_t df();
