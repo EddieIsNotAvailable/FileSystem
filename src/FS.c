@@ -33,10 +33,6 @@
 #include <stdint.h>
 #include "../include/headers.h"
 
-//TODO: 
-// - Date/time file last updated (saved/inserted), print date info in list()
-// - In insert, add check for READONLY when filename already exists
-
 // Input handling
 #define WHITESPACE " \t\n"
 #define MAX_COMMAND_SIZE 255
