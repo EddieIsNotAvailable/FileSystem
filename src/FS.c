@@ -173,7 +173,7 @@ int main()
     char *working_string = strdup(command_string);
     char *head_ptr = working_string;
 
-    //Tokenize the input strings with whitespace used as the delimiter
+    //Tokenize the input strings with whitespace as delimiter
     while(((argument_ptr = strsep(&working_string, WHITESPACE)) != NULL) &&
            (token_count < MAX_NUM_ARGUMENTS))
     {
@@ -220,7 +220,7 @@ int main()
     {
       if(!image_open)
       {
-        printf("Error: No disk image open\n");
+        printf("Error: No image open\n");
         continue;
       }
       char *param1, *param2;
@@ -236,7 +236,7 @@ int main()
     {
       if(!image_open)
       {
-        printf("Error: No disk image open\n");
+        printf("Error: No image open\n");
         continue;
       }
       printf("%d bytes free\n",df());
@@ -335,7 +335,7 @@ int main()
     {
       if(token[1] == NULL)
       {
-        printf("Error: No file specified to encrypt\n");
+        printf("Error: No file specified to encrypt\nEx: encrypt <filename> <cipher>\n");
         continue;
       }
       if(token[2] == NULL)
@@ -401,6 +401,7 @@ void deleteFile(char *filename)
   //Set the inode as free
   free_inodes[thisDir.inode] = 1;
 
+  //Increment block count to account for partially filled end block
   uint32_t block_count = thisInode.file_size / BLOCK_SIZE;
   if(thisInode.file_size % BLOCK_SIZE) block_count++;
 
@@ -420,18 +421,11 @@ void undeleteFile(char *filename)
   int32_t ret = findDeletedFile(filename);
   if(ret == -1)
   {
-    printf("Error: File %s doesn't exist\n", filename);
+    printf("Error: No such deleted file %s to recover\n", filename);
     return;
   }
 
   struct directoryEntry thisDir = directory[ret];
-
-  if(thisDir.in_use)
-  {
-    printf("Error: File %s is not deleted, cannot be undeleted\n", filename);
-    return;
-  }
-
   struct inode thisInode = inodes[thisDir.inode];
 
   if(thisInode.in_use || !(free_inodes[thisDir.inode]))
@@ -491,7 +485,7 @@ void encryptFile(char *filename, uint8_t cipher)
       for(j = 0; j < BLOCK_SIZE; j++)
         data[ FIRST_DATA_BLOCK + thisInode.blocks[i] ][j] ^= cipher;
     
-    //In case last block is not full
+    //In case incomplete final block
     remainder = fileSize % BLOCK_SIZE;
     for(j = 0; j < remainder; j++)
       data[ FIRST_DATA_BLOCK + thisInode.blocks[i] ][j] ^= cipher;
@@ -607,6 +601,8 @@ void list(char *param1,char *param2)
   if(param1[1] == 'h' || param2[1] == 'h') hidden = 1;
   if(param1[1] == 'a' || param2[1] == 'a') print_attr = 1;
 
+  printf("Contents of image: %s\n",image_name);
+
   for(i = 0; i < NUM_FILES; i++)
   {
     if( directory[i].in_use)
@@ -615,9 +611,9 @@ void list(char *param1,char *param2)
         continue;
       
       not_found=0;
-      char filename[65];
+      char filename[64];
       
-      memset(filename, 0, 65);
+      memset(filename, 0, 64);
       strncpy(filename, directory[i].filename, strlen(directory[i].filename));
 
       if(print_attr)
@@ -649,6 +645,7 @@ void retrieve(char *fileToRetrieve, char *newFilename)
     return;
   }
 
+  //If no new filename specified, use the current name
   if(newFilename == NULL) newFilename = fileToRetrieve;
 
   fp = fopen(newFilename,"w");
@@ -773,7 +770,7 @@ void savefs()
   fwrite(&data[0][0], BLOCK_SIZE, NUM_BLOCKS, fp);
 
   printf("Saved image: %s\n",image_name);
-  memset(image_name, 0, 64);
+  
   fclose(fp);
 }
 
@@ -783,6 +780,7 @@ void openfs(char *filename)
 {
   fp = fopen(filename, "r");
 
+  memset(image_name, 0, 64);
   strncpy(image_name, filename, strlen(filename));
   
   fread(&data[0][0], BLOCK_SIZE, NUM_BLOCKS, fp);
@@ -828,7 +826,7 @@ void insert(char *filename)
   //verify file isnt too big
   if(buf.st_size > MAX_FILE_SIZE)
   {
-    printf("Error: File is too large\n");
+    printf("Error: File exceeds max filesize\n");
     return;
   }
 
@@ -894,6 +892,7 @@ void insert(char *filename)
   directory[directory_entry].in_use = 1;
   directory[directory_entry].inode = inode_index;
   strncpy(directory[directory_entry].filename, filename, strlen(filename));
+  //strcpy(directory[directory_entry].filename , filename);
 
   inodes[inode_index].file_size = copy_size;
 
